@@ -29,5 +29,6 @@ if [[ $# -gt 2 ]]; then
     ./compare_model_via_drake_and_ingition_images.py $@ --temp_directory "$temp_directory"
 else
     set -x
-    ./setup.sh ./ros_setup.bash ./format_model_and_generate_manifest.py $@
+    source /opt/ros/noetic/setup.bash
+    ./format_model_and_generate_manifest.py $@
 fi
