@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euo pipefail
+set -eo pipefail
 
 if [[ $# -lt 2 || $# -gt 6 ]]; then
     echo "Please provide path to model directory and model file name."
