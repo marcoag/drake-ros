@@ -11,30 +11,20 @@ from lxml import etree
 import textwrap
 import math
 
-from pydrake.all import (
-    FindResourceOrThrow,
-    Parser,
-    AddMultibodyPlantSceneGraph,
-    DiagramBuilder,
-    JacobianWrtVariable,
-    Simulator,
-)
+from pydrake.multibody.parsing import Parser
+from pydrake.multibody.plant import AddMultibodyPlantSceneGraph
+from pydrake.systems.framework import DiagramBuilder
+from pydrake.geometry import DrakeVisualizer
+
 from pydrake.geometry.render import (
     ClippingRange,
     DepthRange,
     DepthRenderCamera,
     RenderCameraCore,
-    RenderLabel,
     MakeRenderEngineVtk,
     RenderEngineVtkParams,
 )
-from pydrake.geometry import (
-    DrakeVisualizer,
-    HalfSpace,
-    FrameId,
-    GeometrySet,
-    CollisionFilterDeclaration,
-)
+
 from pydrake.systems.sensors import (
     CameraInfo,
     RgbdSensor,
@@ -148,8 +138,7 @@ def generate_sdf(model, poses_file, random, file_name, render_camera_core):
                 <sensor name="camera" type="camera">
                     <camera>
                         <horizontal_fov>
-                                {2*math.atan(render_camera_core.intrinsics().width()/
-                                             (2*render_camera_core.intrinsics().focal_x()))}
+                          {render_camera_core.intrinsics().fov_x()}
                         </horizontal_fov>
                         <image>
                             <width>{render_camera_core.intrinsics().width()}</width>
@@ -184,7 +173,7 @@ def perform_iou_testing(
     drake_visualizer,
 ):
 
-    random_poses = {}
+    random_joint_rotations = {}
     # Read camera translation calculated and applied on gazebo
     # we read the random positions file as it contains everything:
     with open(
@@ -192,22 +181,19 @@ def perform_iou_testing(
         "r",
     ) as datafile:
         for line in datafile:
-            if line.startswith("Translation:"):
-                line_split = line.split(" ")
+            line_split = line.split(" ")
+            if line_split[0] == "Translation:":
                 # we make the value negative since gazebo moved the robot
                 # and in drakewe move the camera
                 trans_x = float(line_split[1])
                 trans_y = float(line_split[2])
                 trans_z = float(line_split[3])
-            elif line.startswith("Scaling:"):
-                line_split = line.split(" ")
+            elif line_split[0] == "Scaling:":
                 scaling = float(line_split[1])
+            # If it's not the translation or the scaling it corresponds to
+            # the rotation of a joint in the form: "JointName: rotationvalue"
             else:
-                line_split = line.split(" ")
-                if line_split[1] == "nan":
-                    random_poses[line_split[0][:-1]] = 0
-                else:
-                    random_poses[line_split[0][:-1]] = float(line_split[1])
+                random_joint_rotations[line_split[0][:-1]] = float(line_split[1])
 
     builder = DiagramBuilder()
     plant, scene_graph = AddMultibodyPlantSceneGraph(builder, 0.0)
@@ -281,8 +267,8 @@ def perform_iou_testing(
         )
 
     if randomize_poses:
-        joint_positions = [0] * dofs
-        for joint_name, pose in random_poses.items():
+        joint_positions = [0] * plant.num_positions()
+        for joint_name, pose in random_joint_rotations.items():
             # check if NaN
             if pose != pose:
                 pose = 0
@@ -321,6 +307,10 @@ def setup_temporary_model_description_file(
     for uri in root.findall(".//uri"):
         uri.text = uri.text.replace("model://" + model_name + "/", "")
 
+    # XML substitution workaround to visualize collisions this should be
+    # doable through AssignRole and RemoveRole, but it's still needed for
+    # gazebo anyway. It can be reformed once the gazebo model_photo_shoot
+    # plugin adds support for collisions.
     if mesh_type == "collision":
         collision_tags = root.findall(".//collision")
         for visual_parent in root.findall(".//visual/.."):
@@ -389,8 +379,15 @@ def run_test(
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("model_directory", help="Directory location of the model files")
-    parser.add_argument("description_file", help="Model description file name")
+    parser.add_argument(
+        "-d",
+        "--model_directory",
+        required=True,
+        help="Directory location of the model files",
+    )
+    parser.add_argument(
+        "-m", "--model_description_file", help="Model description file name", default=""
+    )
     parser.add_argument(
         "-t",
         "--temp_directory",
@@ -404,7 +401,7 @@ def main():
         type=float,
         default=0.9,
     )
-    parser.add_argument("-d", "--drake_visualizer", action="store_true")
+    parser.add_argument("-v", "--drake_visualizer", action="store_true")
     args = parser.parse_args()
 
     render_camera_core = RenderCameraCore(
@@ -423,7 +420,10 @@ def main():
 
     mesh_type = "visual"
     tmp_model_file_path = setup_temporary_model_description_file(
-        args.model_directory, args.description_file, args.temp_directory, mesh_type
+        args.model_directory,
+        args.model_description_file,
+        args.temp_directory,
+        mesh_type,
     )
     print("Running default pose, visual mesh test:")
     run_test(
@@ -451,7 +451,10 @@ def main():
     print("Running default pose, collision mesh test:")
     mesh_type = "collision"
     tmp_model_file_path = setup_temporary_model_description_file(
-        args.model_directory, args.description_file, args.temp_directory, mesh_type
+        args.model_directory,
+        args.model_description_file,
+        args.temp_directory,
+        mesh_type,
     )
     run_test(
         tmp_model_file_path,
