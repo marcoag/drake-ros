@@ -294,9 +294,6 @@ def main():
     if args.model_description_file.endswith(".sdf"):
         preprocess_sdf_and_materials(args.model_directory, args.model_description_file)
 
-    source_tree = parent_dir(abspath(__file__), count=1)
-    cd(source_tree)
-
     cd(args.model_directory)
     print(f"[ Convert Meshes for Drake :( ]")
     for dae_file in find_mesh_files(".", ".dae"):
@@ -315,8 +312,7 @@ def main():
         create_pacakge_xml(args.model_description_file)
     else:
         print("Found URDF as description file, translating through ros launch")
-        cd(source_tree)
-        cd("repos/universal_robot")
+        cd(args.model_directory)
         if "ROS_DISTRO" not in os.environ:
             raise UserError("Please run under `./ros_setup.bash`, or whatevs")
 
