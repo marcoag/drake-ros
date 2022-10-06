@@ -137,8 +137,8 @@ def main():
     ):
         for model_tag in sdf_models_url.keys():
             download_transform_test_sdf(sdf_models_url[model_tag])
-        # for model_tag in urdf_models_url.keys():
-            # download_transform_test_urdf(urdf_models_url[model_tag])
+        for model_tag in urdf_models_url.keys():
+            download_transform_test_urdf(urdf_models_url[model_tag])
 
 
 if __name__ == "__main__":
